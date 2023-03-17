@@ -36,7 +36,6 @@ fn clean_url(url: &str) -> String {
         unclean_url.push_str("/");
     }
 
-    // if url starts with mailto or tel, return empty string
     if unclean_url.starts_with("mailto:") || unclean_url.starts_with("tel:") {
         return "".to_string();
     }
@@ -58,7 +57,7 @@ fn clean_url(url: &str) -> String {
 fn is_valid_url(url: &str) -> bool {
     let _domain = unsafe { DOMAIN.clone() };
     let url = url.replace("www.", "");
-    if url.contains(&_domain.as_str()) {
+    if url.starts_with(&_domain.as_str()) {
         return true;
     } else {
         return false;
@@ -103,17 +102,10 @@ fn crawl(url: &str) {
         .build()
         .expect("Unable to build client");
 
-
-    // try to make request, if error return
     let res = match client.get(&_clean_url).send() {
         Ok(res) => res,
         Err(_) => return,
     };
-
-
-
-    
-
 
     if res.status().is_client_error() || res.status().is_server_error() {
         return;
@@ -142,12 +134,7 @@ fn crawl(url: &str) {
 fn watch() {
     loop {
         if unsafe { UURLS.len() } > 0 {
-            // 
-
-
-
-
-            let url = unsafe { UURLS.remove(0) };
+           let url = unsafe { UURLS.remove(0) };
             if unsafe { VURLS.contains(&url) } {
                 continue;
             } else if is_valid_url(&url) {
