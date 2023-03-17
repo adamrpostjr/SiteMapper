@@ -1,15 +1,14 @@
-use reqwest::blocking::{ClientBuilder};
+use reqwest::blocking::ClientBuilder;
 use scraper::{Html, Selector};
 use std::fs::File;
-use std::io::{Write};
 use std::fs::OpenOptions;
-
+use std::io::Write;
+use std::time::Duration;
 
 static mut VURLS: Vec<String> = Vec::new();
 static mut UURLS: Vec<String> = Vec::new();
 static mut DOMAIN: String = String::new();
 static mut FILE_PATH: String = String::new();
-
 
 fn print_status(cur_url: &str) {
     print!("{}[2J", 27 as char);
@@ -21,12 +20,14 @@ fn print_status(cur_url: &str) {
     println!(" ");
     println!("------------------------------------------------------------------------");
     println!(" ");
-    println!("Unprocessed: {}   |   Processed: {}", unsafe {UURLS.clone().len()}, unsafe{VURLS.clone().len()});
+    println!(
+        "Unprocessed: {}   |   Processed: {}",
+        unsafe { UURLS.clone().len() },
+        unsafe { VURLS.clone().len() }
+    );
     println!(" ");
     println!("Crawling URL: {}", cur_url);
 }
-
-
 
 fn clean_url(url: &str) -> String {
     let mut unclean_url = url.to_string();
@@ -34,7 +35,6 @@ fn clean_url(url: &str) -> String {
     if !unclean_url.ends_with("/") {
         unclean_url.push_str("/");
     }
-
 
     // if url starts with mailto or tel, return empty string
     if unclean_url.starts_with("mailto:") || unclean_url.starts_with("tel:") {
@@ -49,7 +49,7 @@ fn clean_url(url: &str) -> String {
     if !unclean_url.starts_with("http://") && !unclean_url.starts_with("https://") {
         unclean_url = format!("{}{}", unsafe { DOMAIN.clone() }, unclean_url);
     }
-    
+
     unclean_url = unclean_url.trim().to_string();
 
     return unclean_url;
@@ -57,14 +57,13 @@ fn clean_url(url: &str) -> String {
 
 fn is_valid_url(url: &str) -> bool {
     let _domain = unsafe { DOMAIN.clone() };
-    let url = url.replace("www.", "");    
+    let url = url.replace("www.", "");
     if url.contains(&_domain.as_str()) {
-        return true
+        return true;
     } else {
-        return false
-    }    
+        return false;
+    }
 }
-
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -78,7 +77,7 @@ fn main() {
 
     if args.len() == 3 {
         unsafe { FILE_PATH = args[2].clone() };
-    }else{
+    } else {
         unsafe { FILE_PATH = "sitemap.xml".to_string() };
     }
 
@@ -100,52 +99,57 @@ fn crawl(url: &str) {
 
     let client = ClientBuilder::new()
         .user_agent("BOT/Rust Site Mapper")
+        .timeout(Duration::from_secs(10))
         .build()
         .expect("Unable to build client");
 
-    let res = client.get(&_clean_url).send().expect("Unable to send request");
+
+    // try to make request, if error return
+    let res = match client.get(&_clean_url).send() {
+        Ok(res) => res,
+        Err(_) => return,
+    };
+
+
+
+    
+
+
     if res.status().is_client_error() || res.status().is_server_error() {
-        return
+        return;
     }
-    if !res.headers().get("content-type").unwrap().to_str().unwrap().contains("text/html") {
-        return
+    if !res
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("text/html")
+    {
+        return;
     }
     let body = res.text().expect("Unable to get response body");
     let document = Html::parse_document(&body);
     let links = Selector::parse("a").expect("Unable to parse selector");
-   
+
     for link in document.select(&links) {
         let link = link.value().attr("href").unwrap_or("");
         let _clean_link = clean_url(link);
         unsafe { UURLS.push(_clean_link.clone()) };
     }
-
 }
 
 fn watch() {
-    // TODO: getting threading to work
-    // 3 threads crawling urls and 3 threads adding urls to the sitemap
-    // let mut handles = vec![];
-    // for _ in 0..3 {
-    //     let handle = std::thread::spawn(|| {
-    //         loop {
-    //             if unsafe { UURLS.len() } > 0 {
-    //                 let url = unsafe { UURLS.remove(0) };
-    //                 if !unsafe { VURLS.contains(&url) } || is_valid_url(&url) {
-    //                     unsafe { VURLS.push(url.clone()) };
-    //                     add_url(&mut unsafe { FILE_PATH.clone().as_str() }, &url);
-    //                     crawl(&url);
-    //                 }
-    //             }
-    //         }
-    //     });
-    //     handles.push(handle);
-    // }
     loop {
         if unsafe { UURLS.len() } > 0 {
+            // 
+
+
+
+
             let url = unsafe { UURLS.remove(0) };
-            if unsafe {VURLS.contains(&url)} {
-                continue
+            if unsafe { VURLS.contains(&url) } {
+                continue;
             } else if is_valid_url(&url) {
                 unsafe { VURLS.push(url.clone()) };
                 add_url(&mut unsafe { FILE_PATH.clone().as_str() }, &url);
@@ -154,10 +158,6 @@ fn watch() {
         }
     }
 }
-
-
-
-
 
 // function to create a file at a given path
 fn create_file(path: &str) {
@@ -169,27 +169,44 @@ fn create_file(path: &str) {
 
 // start sitemap file
 fn start_sitemap(path: &mut &str) {
-    let mut file = OpenOptions::new().append(true).open(path).expect("Unable to open file");
-    file.write_all(b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n").expect("Unable to write to file");
-    file.write_all(b"<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n").expect("Unable to write to file");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(path)
+        .expect("Unable to open file");
+    file.write_all(b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        .expect("Unable to write to file");
+    file.write_all(b"<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
+        .expect("Unable to write to file");
     drop(file);
 }
 
 // fn to add a url to the sitemap
 fn add_url(path: &mut &str, url: &str) {
-    let mut file = OpenOptions::new().append(true).open(path).expect("Unable to open file");
-    file.write_all(b"    <url>\n").expect("Unable to write to file");
-    file.write_all(b"        <loc>").expect("Unable to write to file");
-    file.write_all(url.as_bytes()).expect("Unable to write to file");
-    file.write_all(b"</loc>\n").expect("Unable to write to file");
-    file.write_all(b"    </url>\n").expect("Unable to write to file");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(path)
+        .expect("Unable to open file");
+    file.write_all(b"    <url>\n")
+        .expect("Unable to write to file");
+    file.write_all(b"        <loc>")
+        .expect("Unable to write to file");
+    file.write_all(url.as_bytes())
+        .expect("Unable to write to file");
+    file.write_all(b"</loc>\n")
+        .expect("Unable to write to file");
+    file.write_all(b"    </url>\n")
+        .expect("Unable to write to file");
     drop(file);
 }
 
 // fn to end the sitemap
 fn end_sitemap(path: &mut &str) {
     // open the file for appending
-    let mut file = OpenOptions::new().append(true).open(path).expect("Unable to open file");
-    file.write_all(b"</urlset>").expect("Unable to write to file");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(path)
+        .expect("Unable to open file");
+    file.write_all(b"</urlset>")
+        .expect("Unable to write to file");
     drop(file);
 }
